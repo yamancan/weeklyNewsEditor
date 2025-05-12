@@ -1,0 +1,36 @@
+{
+  "name": "rwanews-ts",
+  "version": "1.0.0",
+  "description": "Telegram bot and web scraper in TypeScript",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "tsc -w & nodemon dist/index.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "grammy",
+    "typescript",
+    "scraper"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@grammyjs/conversations": "^1.2.0",
+    "@grammyjs/files": "^1.0.4",
+    "axios": "^1.6.7",
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.4.5",
+    "grammy": "^1.22.0",
+    "openai": "^4.28.4",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.20",
+    "@types/uuid": "^9.0.8",
+    "nodemon": "^3.0.3",
+    "typescript": "^5.3.3"
+  }
+} 

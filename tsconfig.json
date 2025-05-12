@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",                     /* Specify ECMAScript target version */
+    "module": "NodeNext",                  /* Specify module code generation */
+    "moduleResolution": "NodeNext",         /* Specify module resolution strategy */
+    "rootDir": "./src",                     /* Specify the root directory of input files */
+    "outDir": "./dist",                    /* Redirect output structure to the directory */
+    "esModuleInterop": true,                 /* Enables emit interoperability between CommonJS and ES Modules */
+    "forceConsistentCasingInFileNames": true, /* Disallow inconsistently-cased references to the same file */
+    "strict": true,                          /* Enable all strict type-checking options */
+    "skipLibCheck": true,                    /* Skip type checking of declaration files */
+    "resolveJsonModule": true              /* Include modules imported with .json extension */
+  },
+  "include": ["src/**/*"],                  /* Specifies which files to include in compilation */
+  "exclude": ["node_modules", "**/*.spec.ts"] /* Specifies which files to exclude */
+} 
