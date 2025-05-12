@@ -3,25 +3,24 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-function getEnvVariable(key: string, defaultValue?: string): string {
+function getEnvVariable(key: string, defaultValue?: string): string | undefined {
     const value = process.env[key] ?? defaultValue;
-    if (value === undefined) {
-        throw new Error(`Environment variable ${key} is not set.`);
-    }
     return value;
 }
 
-function getEnvVariableAsNumber(key: string, defaultValue?: number): number {
+function getEnvVariableAsNumber(key: string, defaultValue?: number): number | undefined {
     const valueStr = getEnvVariable(key, defaultValue?.toString());
+    if (valueStr === undefined) return undefined;
     const value = parseInt(valueStr, 10);
     if (isNaN(value)) {
-        throw new Error(`Environment variable ${key} must be a number.`);
+        throw new Error(`Environment variable ${key} (value: "${valueStr}") must be a number if provided.`);
     }
     return value;
 }
 
 function getEnvVariableAsArray(key: string, defaultValue?: string[]): number[] {
     const valueStr = getEnvVariable(key, defaultValue?.join(','));
+    if (!valueStr) return [];
     return valueStr.split(',').map(id => {
         const num = parseInt(id.trim(), 10);
         if (isNaN(num)) {
@@ -31,13 +30,30 @@ function getEnvVariableAsArray(key: string, defaultValue?: string[]): number[] {
     }).filter(id => !isNaN(id));
 }
 
+function getRequiredEnvVariable(key: string, defaultValue?: string): string {
+    const value = process.env[key] ?? defaultValue;
+    if (value === undefined || value === null || value === '') {
+        throw new Error(`Required environment variable ${key} is not set and no default was provided.`);
+    }
+    return value;
+}
+
+function getRequiredEnvVariableAsNumber(key: string, defaultValue?: number): number {
+    const valueStr = getRequiredEnvVariable(key, defaultValue?.toString());
+    const value = parseInt(valueStr, 10);
+    if (isNaN(value)) {
+        throw new Error(`Required environment variable ${key} (value: "${valueStr}") must be a number.`);
+    }
+    return value;
+}
+
 export const config = {
     telegram: {
-        botToken: getEnvVariable('TELEGRAM_BOT_TOKEN'),
+        botToken: getRequiredEnvVariable('TELEGRAM_BOT_TOKEN'),
         /** Editorler grubunun ID'si */
-        editorsGroupId: getEnvVariableAsNumber('EDITORS_GROUP_ID'),
+        editorsGroupId: getRequiredEnvVariableAsNumber('EDITORS_GROUP_ID'),
         /** Haberlerin yayınlanacağı nihai kanalın ID'si */
-        newsChannelId: getEnvVariableAsNumber('NEWS_CHANNEL_ID'),
+        newsChannelId: getRequiredEnvVariableAsNumber('NEWS_CHANNEL_ID'),
         /** Bot'a doğrudan mesaj göndermesine ve komutları kullanmasına izin verilen kullanıcı ID'leri */
         allowedUserIds: getEnvVariableAsArray('ALLOWED_USER_IDS', []),
     },
@@ -47,7 +63,7 @@ export const config = {
         phoneNumber: getEnvVariable('TELEGRAM_PHONE_NUMBER'),
         sessionPath: getEnvVariable('TELEGRAM_SESSION_PATH', './telegram_session'),
         /** Dinlenecek kaynak Telegram kanal/grup ID'leri (virgülle ayrılmış) */
-        sourceChatIds: getEnvVariable('SOURCE_CHAT_IDS').split(',').map(id => id.trim()),
+        sourceChatIds: (getEnvVariable('SOURCE_CHAT_IDS') || '').split(',').map(id => id.trim()).filter(id => id),
         /** Listener client'ının kendi kullanıcı ID'si. 
          *  Bu ID'nin `allowedUserIds` içinde olması önerilir, 
          *  böylece listener'dan bota gönderilen mesajlar yetkili kabul edilir.
@@ -55,10 +71,10 @@ export const config = {
         listenerUserId: process.env.LISTENER_USER_ID ? getEnvVariableAsNumber('LISTENER_USER_ID') : undefined,
     },
     openai: {
-        apiKey: getEnvVariable('OPENAI_API_KEY'),
-        defaultModel: 'gpt-4o',
-        systemPrompt: "Kullanıcıların sağladığı içeriklerden etkili ve özlü bültenler oluşturmalarına yardımcı olan bir editör olarak çalışacaksın. Sağlanan haberleri analiz eder, önemli noktaları belirler ve kullanıcıya net ve anlaşılır bir bülten taslağı sunar. Haberler doğrudan metin olarak verilecektir.",
-        readyPrompt: `
+        apiKey: getRequiredEnvVariable('OPENAI_API_KEY'),
+        defaultModel: getRequiredEnvVariable('OPENAI_DEFAULT_MODEL', 'gpt-4o'),
+        systemPrompt: getRequiredEnvVariable('OPENAI_SYSTEM_PROMPT', "Kullanıcıların sağladığı içeriklerden etkili ve özlü bültenler oluşturmalarına yardımcı olan bir editör olarak çalışacaksın. Sağlanan haberleri analiz eder, önemli noktaları belirler ve kullanıcıya net ve anlaşılır bir bülten taslağı sunar. Haberler doğrudan metin olarak verilecektir."),
+        readyPrompt: getRequiredEnvVariable('OPENAI_READY_PROMPT', `
             Haber içeriğini değerlendirirken tüm metni okur ve metnin önemli vurgulanan noktalarını belirler.
             Haberin stratejik, finansal, ekonomik önemlerini değerlendirir.
             Metni daha önce okuduğu haberler ve sahip olduğu güncel bilgiyle birlikte değerlendirir.
@@ -69,11 +85,11 @@ export const config = {
             [Başlık]
             [içerik, önemli noktalar, varsa sayılar]
             [Kaynak](www.Link.com)
-            `,
+            `),
     },
     scraper: {
-        homeUrl: getEnvVariable('HOME_URL', 'https://www.ledgerinsights.com/category/news/'),
-        intervalHours: getEnvVariableAsNumber('SCRAPE_INTERVAL_HOURS', 4),
+        homeUrl: getRequiredEnvVariable('HOME_URL', 'https://www.ledgerinsights.com/category/news/'),
+        intervalHours: getEnvVariableAsNumber('SCRAPE_INTERVAL_HOURS') ?? 4,
     },
     logLevel: getEnvVariable('LOG_LEVEL', 'info'),
 }; 

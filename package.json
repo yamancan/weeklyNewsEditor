@@ -24,7 +24,9 @@
     "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.4.5",
     "grammy": "^1.22.0",
+    "input": "^1.0.1",
     "openai": "^4.28.4",
+    "telegram": "^2.26.22",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
@@ -33,4 +35,4 @@
     "nodemon": "^3.0.3",
     "typescript": "^5.3.3"
   }
-} 
+}

@@ -1,22 +1,11 @@
-import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions/index.js'; // .js extension
+import { TelegramClient, sessions } from 'telegram';
+const { StringSession } = sessions;
 import { NewMessage, NewMessageEvent } from 'telegram/events/index.js'; // .js extension
 import { config } from '../config.js'; // .js extension
 import { bot } from '../bot/bot.js'; // Import the bot instance to send messages to it
 import input from 'input'; // For interactive login prompts
 
-// --- Listener Setup ---
-
-// Session string will be stored in memory for this example.
-// For production, you MUST save this string securely (e.g., .env file, database, or a local file via TELEGRAM_SESSION_PATH)
-// and load it on startup to avoid logging in every time.
-// If config.listener.sessionPath is set, we can try to use it (though this example doesn't fully implement file-based session persistence).
-let sessionString = process.env.TELEGRAM_SESSION_STRING || ''; // Load from .env if available
-const client = new TelegramClient(new StringSession(sessionString), config.listener.apiId, config.listener.apiHash, {
-    connectionRetries: 5,
-    // You might need to configure baseDC if you have issues connecting
-    // baseDC: 2, // For example
-});
+let client: TelegramClient | null = null;
 
 /**
  * Handles incoming messages from the listened-to channels/groups.
@@ -29,6 +18,12 @@ async function handleNewMessageEvent(event: NewMessageEvent) {
     // Ensure message text exists
     if (!message.text) {
         console.log("[Listener] Message has no text, skipping.");
+        return;
+    }
+
+    // Check if the client is actually connected before trying to use it
+    if (!client || !client.connected) { 
+        console.warn("[Listener] Received message, but client is not connected. Skipping forward.");
         return;
     }
 
@@ -46,9 +41,12 @@ async function handleNewMessageEvent(event: NewMessageEvent) {
         // For simplicity, let's assume the bot can receive messages from this listener user
         // and the handleNewMessages will pick it up based on listenerUserId.
         // We send the message to the bot itself.
-        const botUsername = (await bot.api.getMe()).username;
+        const botInfo = await bot.api.getMe();
+        const botUsername = botInfo.username;
+
         if (botUsername) {
-            await client.sendMessage(`@${botUsername}`, {
+            // Added null check before using client
+            await client.sendMessage(`@${botUsername}`, { 
                  message: message.text, // Send the plain text
                  // Consider adding more details if needed, e.g., original sender, link to message
             });
@@ -63,51 +61,56 @@ async function handleNewMessageEvent(event: NewMessageEvent) {
 }
 
 /**
- * Starts the Telegram user client (listener).
- * Handles interactive login if no session string is provided.
+ * Initializes and starts the Telegram client listener.
  */
-export async function startTelegramListener() {
-    console.log("[Listener] Starting Telegram User Client...");
+export async function startListener() {
+    // Only proceed if essential listener config is provided
+    if (!config.listener.apiId || !config.listener.apiHash) {
+        console.warn('[Listener] TELEGRAM_API_ID or TELEGRAM_API_HASH not provided in .env. Skipping listener initialization.');
+        return; // Do not start the listener
+    }
 
-    // Register event handler for new messages from specified chats
-    // Note: To listen to specific chats, the user client must be a member of those chats.
-    // The `chats` filter in `NewMessage` takes an array of chat IDs (numbers) or usernames (strings).
-    // Convert string IDs from config to numbers if they are numeric.
-    const sourceChatIdsNumericOrString = config.listener.sourceChatIds.map(id => {
-        const numId = parseInt(id, 10);
-        return isNaN(numId) ? id : numId; // Keep as string if not a valid number (e.g. username)
+    const sessionString = process.env.TELEGRAM_SESSION_STRING; // Load existing session string if available
+    const stringSession = new StringSession(sessionString || ''); // Use empty string if no session yet
+
+    console.log('[Listener] Initializing Telegram client...');
+    client = new TelegramClient(stringSession, config.listener.apiId, config.listener.apiHash, {
+        connectionRetries: 5,
+        // deviceModel: "RWANews Bot Listener" // Optional: Identify the client
     });
 
-    client.addEventHandler(handleNewMessageEvent, new NewMessage({ chats: sourceChatIdsNumericOrString }));
-
     try {
+        console.log('[Listener] Connecting to Telegram...');
         await client.start({
-            phoneNumber: config.listener.phoneNumber,
-            phoneCode: async () => await input.text("Please enter the code you received: "),
-            onError: (err) => console.error("[Listener] Connection error:", err),
-            // Optional: Password for 2FA
-            password: async () => {
-                const pw = await input.text("Please enter your 2FA password: ");
-                return pw;
-            },
-            // Optional: If `sessionName` is used for file-based sessions by StringSession 
-            // (though StringSession primarily uses the string in memory or passed to constructor).
-            // sessionName: config.listener.sessionPath 
+            phoneNumber: async () => config.listener.phoneNumber || await input.text('Please enter your phone number: '),
+            password: async () => await input.text('Please enter your password: '),
+            phoneCode: async () => await input.text('Please enter the code you received: '),
+            onError: (err) => console.error('[Listener] Connection error:', err),
         });
 
-        console.log("[Listener] User Client connected successfully.");
-        console.log("[Listener] Current session string (SAVE THIS SECURELY for TELEGRAM_SESSION_STRING env var):");
-        console.log(client.session.save());
+        console.log('[Listener] Connected successfully!');
 
-        // Keep the listener running
-        console.log("[Listener] Listening for new messages in specified chats...");
-        // The client will run in the background due to the event handlers.
-        // For a script that needs to explicitly stay alive:
-        // await new Promise(resolve => setTimeout(resolve, Infinity)); 
+        // Save the session string after successful connection
+        // Check if client is not null before accessing session
+        if (client) { 
+            const currentSession = client.session.save(); 
+            // Check if save() returned a non-empty string
+            if (typeof currentSession === 'string' && currentSession && currentSession !== sessionString) {
+                console.log('[Listener] New session string generated. Please update TELEGRAM_SESSION_STRING in your .env file:');
+                console.log(currentSession);
+            }
+        }
+
+        // --- Add Event Handlers --- 
+        // Check if client is not null before adding handler
+        if(client) {
+            client.addEventHandler(handleNewMessageEvent, new NewMessage({ chats: config.listener.sourceChatIds }));
+            console.log(`[Listener] Listening for messages in source chats: ${config.listener.sourceChatIds.join(', ')}`);
+        }
 
     } catch (error) {
-        console.error("[Listener] Failed to start or connect user client:", error);
-        // process.exit(1); // Exit if connection fails critically
+        console.error('[Listener] Failed to start or connect Telegram client:', error);
+        client = null; // Reset client on failure
     }
 }
 

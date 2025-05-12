@@ -70,7 +70,7 @@ async function scrapeArticleContent(url: string): Promise<string | null> {
 /**
  * Fetches the main news page, identifies articles, scrapes them, and sends new ones to the bot.
  */
-async function runScraper() {
+export async function runScraper() {
     console.log("[Scraper] Running scraper job...");
     try {
         const homeResponse = await axios.get(config.scraper.homeUrl, { timeout: 20000 }); // 20 sec timeout
@@ -185,11 +185,11 @@ Link: ${link}`
 }
 
 /**
- * Starts the scraper to run periodically.
+ * Starts the scraper scheduler to run periodically.
  */
-export function startScraper() {
-    console.log(`[Scraper] Initializing scraper for ${config.scraper.homeUrl}. Interval: ${config.scraper.intervalHours} hours.`);
-    // Run once immediately on start, then set interval
-    runScraper(); 
+export function startScrapingScheduler() {
+    console.log(`[Scraper] Initializing scraper scheduler for ${config.scraper.homeUrl}. Interval: ${config.scraper.intervalHours} hours.`);
+    // Removed immediate run from here, it's handled in index.ts
     setInterval(runScraper, config.scraper.intervalHours * 60 * 60 * 1000);
+    console.log(`[Scraper] Scheduler started. Next run in ${config.scraper.intervalHours} hours.`);
 } 
