@@ -1,4 +1,4 @@
-import { MessageData, MessageStore, NewsArticle } from './types';
+import { MessageData, MessageStore, NewsArticle } from './types.js';
 
 /** 
  * In-memory store for `MessageData` objects, keyed by a unique messageStoreId (UUID).

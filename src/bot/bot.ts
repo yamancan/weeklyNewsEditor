@@ -2,6 +2,7 @@ import { Bot, session, MemorySessionStorage } from 'grammy';
 import { conversations, createConversation } from '@grammyjs/conversations';
 import { MyContext, SessionData } from '../types.js'; // .js extension
 import { config } from '../config.js'; // .js extension
+import { InlineKeyboard } from 'grammy';
 import {
     authMiddleware,
     handleNewMessages,
@@ -50,7 +51,15 @@ bot.use(authMiddleware);
 // Command Handlers
 bot.command("gpt", handleChangeGptModelCommand);
 // Add other commands here if needed (e.g., /start, /help)
-bot.command("start", (ctx) => ctx.reply("Welcome! Forward news items or send them directly if you are authorized."));
+bot.command("start", (ctx) => {
+    const keyboard = new InlineKeyboard()
+        .text("🚀 Start Scraping", "start_scraping").row()
+        .text("❓ Support", "support");
+    
+    ctx.reply("Welcome! Use the buttons below or forward news items if you are authorized.", {
+        reply_markup: keyboard
+    });
+});
 
 // Message Handlers
 // Handle :forward_date first if direct forwarding handling is desired separate from listener
@@ -70,6 +79,14 @@ export async function startBot() {
     // Get bot info
     const botInfo = await bot.api.getMe();
     console.log(`Bot ${botInfo.first_name} (@${botInfo.username}) is starting...`);
+
+    // Set bot commands for the menu
+    await bot.api.setMyCommands([
+        { command: "start", description: "Starts the bot and shows main actions" },
+        { command: "gpt", description: "Change GPT model" },
+        // Add other commands here if you want them in the menu
+    ]);
+    console.log("Bot commands registered with Telegram.");
 
     // Start polling
     await bot.start({

@@ -6,6 +6,7 @@ import { addSentNews, hasNewsBeenSent, storeMessageData } from './storage.js'; /
 import { NewsArticle } from './types.js'; // .js
 import { createMainKeyboard, createCancelKeyboard } from './bot/keyboards.js'; // .js
 import { v4 as uuidv4 } from 'uuid';
+import { sendMessageWithRetry } from './utils.js'; // Corrected path
 
 /**
  * Scrapes a single news article page to extract its content.
@@ -159,23 +160,35 @@ Link: ${link}`
             });
 
             try {
-                // Send the short message (title + link) first
-                await bot.api.sendMessage(config.telegram.editorsGroupId, completeNewsItem.linkOnlyMessage, { parse_mode: "Markdown" });
-                // Then send the prompt with the keyboard
-                await bot.api.sendMessage(config.telegram.editorsGroupId, "Choose an option for scraped news:", {
-                    reply_markup: keyboard,
-                });
-                 // Mark as sent ONLY after successfully notifying the group
+                // Send the short message (title + link) first using the retry helper
+                await sendMessageWithRetry(
+                    bot.api, 
+                    config.telegram.editorsGroupId, 
+                    completeNewsItem.linkOnlyMessage, 
+                    { parse_mode: "Markdown" }
+                );
+                
+                // Then send the prompt with the keyboard using the retry helper
+                await sendMessageWithRetry(
+                    bot.api, 
+                    config.telegram.editorsGroupId, 
+                    "Choose an option for scraped news:", 
+                    { reply_markup: keyboard }
+                );
+
+                // Mark as sent ONLY after successfully notifying the group
                 addSentNews(completeNewsItem);
             } catch (error) {
-                console.error(`[Scraper] Failed to send scraped news message to editors group ${config.telegram.editorsGroupId}:`, error);
-                // Don't mark as sent if notification failed
-                // Remove stored data if sending failed?
+                // sendMessageWithRetry already logs errors after retries fail
+                console.error(`[Scraper] Failed to send message(s) for article ${completeNewsItem.title} after retries.`);
+                // Decide if we need to delete stored data
                 // deleteMessageData(messageStoreId);
             }
 
-            // Optional delay between processing articles
-            await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+            // === ADD LONGER DELAY BETWEEN ARTICLES ===
+            console.log(`[Scraper] Waiting 15s before processing next article...`);
+            await new Promise(resolve => setTimeout(resolve, 15000)); // 15 seconds
+            // =========================================
         }
         console.log("[Scraper] Scraper job finished.");
 

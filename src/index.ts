@@ -1,10 +1,14 @@
-import dotenv from 'dotenv';
+console.log("!!!!!!!!!! NODE PROCESS STARTED SUCCESSFULLY !!!!!!!!!!");
+
+// Remove dotenv import and configuration from index.ts
+// import dotenv from 'dotenv';
 console.log("[Index] Starting script execution..."); // Log 1
 
-dotenv.config(); // Load environment variables from .env file
-console.log("[Index] dotenv configured."); // Log 2
+// dotenv.config(); // REMOVED
+// console.log("[Index] dotenv configured."); // REMOVED
 
 // --- Standard Top-Level Imports ---
+// Imports will trigger config.ts which loads dotenv
 console.log("[Index] Importing modules..."); // Log 3
 import { bot } from './bot/bot.js';
 import { startListener } from './listener/telegramListener.js';

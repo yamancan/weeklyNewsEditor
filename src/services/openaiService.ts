@@ -25,6 +25,7 @@ export async function generateGptSummary(
     prompt: string,
     model: string
 ): Promise<string | null> {
+    console.log(`[GPT Request] Model: ${model}, Prompt: ${prompt.substring(0, 100)}..., Content Length: ${content.length}`); // Log request details
     try {
         const completion = await gptClient.chat.completions.create({
             model: model,
@@ -41,9 +42,15 @@ export async function generateGptSummary(
             ],
         });
         // Safely access the content, returning null if the path is invalid
-        return completion.choices[0]?.message?.content ?? null;
+        const responseContent = completion.choices[0]?.message?.content ?? null;
+        if (responseContent) {
+            console.log(`[GPT Response] Success. Response Length: ${responseContent.length}`); // Log success and length
+        } else {
+            console.warn(`[GPT Response] Received null or empty content from API.`); // Log empty response
+        }
+        return responseContent;
     } catch (error) {
-        console.error(`Error calling OpenAI API with model ${model}:`, error instanceof Error ? error.message : error);
+        console.error(`[GPT Error] Error calling OpenAI API with model ${model}:`, error instanceof Error ? error.message : error);
         return null;
     }
 } 

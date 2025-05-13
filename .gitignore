@@ -1,10 +1,46 @@
-# Logs
-logs
+# Dependencies
+/node_modules
+/dist
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Log files
 *.log
+logs
+*.logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 lerna-debug.log*
+
+# IDEs and editors
+.idea
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+*.tsbuildinfo
+
+# Telegram session file (if you decided to keep it in the project root)
+telegram_session
+*.session
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
@@ -38,14 +74,10 @@ bower_components
 build/Release
 
 # Dependency directories
-node_modules/
 jspm_packages/
 
 # TypeScript v1 declaration files
 typings/
-
-# TypeScript cache
-*.tsbuildinfo
 
 # Optional npm cache directory
 .npm
@@ -69,7 +101,6 @@ typings/
 .yarn-integrity
 
 # dotenv environment variable files
-.env
 .env.test
 .env.production
 .env.development*
@@ -116,3 +147,82 @@ build
 # Session files for Telegram client (if used)
 session_name.*
 *.session 
+
+# -----------------------------------------------------------------------------
+# ULTIMATE SECURITY ADDITIONS - BE CAREFUL WITH BROAD PATTERNS
+# -----------------------------------------------------------------------------
+
+# Generic secret files
+secrets.*
+credentials.*
+*.secret
+
+# Private keys, certificates, and keystores
+*.key
+*.pem # Caution: Ensure public certificates are not unintentionally ignored if they also use .pem
+*.p12
+*.pfx
+*.pkcs12
+*.keychain
+
+# Specific tool credential files (usually global, but ignore if in project)
+.netrc
+_netrc
+*.pgpass # PostgreSQL password file
+
+# Infrastructure-as-Code local state/secrets
+.terraform/ # Terraform state and configuration directory
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.backup
+.tfvars # Terraform variable files, may contain secrets
+*.tfvars
+*.tfvars.json
+.kitchen/ # Test Kitchen local files
+
+# Unencrypted secrets from tools like SOPS
+*.sops.* # e.g., secrets.dev.yaml from sops
+
+# Database dumps (unless they are versioned schema definitions)
+*.sql
+*.dump
+*.sql.gz
+*.dump.gz
+
+# Editor backup / swap files / temporary files
+*~
+*.swp
+*.swo
+*.bak
+*.old
+*.tmp
+*.temp
+
+# Shell history files (if accidentally copied into project)
+.*_history
+.*history # e.g., .bash_history, .zsh_history
+
+# Output files that might contain sensitive data from scripts
+*.out
+
+# Build secrets or local config overrides
+# Example: local_settings.py, Web.Local.config
+local_settings.*
+settings_local.*
+*Local.config
+*.local.yml
+*.local.yaml
+*.local.json
+
+# Cloud SDK credentials / configuration (usually global, but ignore if in project)
+.aws/
+.azure/
+.gcp/
+.oci/
+
+# Mobile provisioning profiles
+*.mobileprovision
+
+# NuGet local packages config
+packages.config 

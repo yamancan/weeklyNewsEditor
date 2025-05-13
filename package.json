@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "description": "Telegram bot and web scraper in TypeScript",
   "main": "dist/index.js",
+  "type": "module",
   "scripts": {
     "start": "node dist/index.js",
     "build": "tsc",
-    "dev": "tsc -w & nodemon dist/index.js"
+    "dev": "tsc -w & nodemon --ignore dist/ dist/index.js"
   },
   "keywords": [
     "telegram",

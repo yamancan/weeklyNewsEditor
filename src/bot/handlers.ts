@@ -1,6 +1,6 @@
 import { Bot, GrammyError, HttpError, InlineKeyboard, NextFunction } from 'grammy';
-import { MyContext, CallbackQueryData, MyConversation } from '../types';
-import { config } from '../config';
+import { MyContext, CallbackQueryData, MyConversation } from '../types.js';
+import { config } from '../config.js';
 import { 
     createMainKeyboard, 
     createGptModelKeyboard, 
@@ -8,6 +8,7 @@ import {
 } from './keyboards.js';
 import { getMessageData, storeMessageData, deleteMessageData } from '../storage.js';
 import { generateGptSummary } from '../services/openaiService.js';
+import { runScraper } from '../scraper.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // --- Utility Functions ---
@@ -126,103 +127,163 @@ export async function handleChangeGptModelCommand(ctx: MyContext): Promise<void>
 
 /** Handles button clicks from inline keyboards */
 export async function buttonClickHandler(ctx: MyContext): Promise<void> {
-    if (!ctx.callbackQuery?.data || !ctx.from) {
-        await ctx.answerCallbackQuery({ text: "Error: Invalid callback data." });
-        return;
+    const callbackData = ctx.callbackQuery?.data;
+    const queryId = ctx.callbackQuery?.id;
+    if (!callbackData || !ctx.from || !queryId) { // Also check queryId for answerCallbackQuery
+        // Cannot answer if queryId is missing
+        console.error("Error: Invalid callback data or missing query ID.");
+        return; 
     }
     // Only process callbacks from authorized users (important in groups)
     if (!isUserAuthorized(ctx)) {
-         await ctx.answerCallbackQuery({ text: "Error: Unauthorized action." });
+         // Answer silently to avoid error, but tell user they are unauthorized
+         await ctx.answerCallbackQuery({ text: "Error: Unauthorized action.", show_alert: true });
          return;
     }
 
-    let data: CallbackQueryData;
-    try {
-        data = JSON.parse(ctx.callbackQuery.data);
-    } catch (error) {
-        console.error("Failed to parse callback query data:", ctx.callbackQuery.data, error);
-        await ctx.answerCallbackQuery({ text: "Error: Invalid callback format." });
-        return;
+    // Parse the format: "prefix:data"
+    const parts = callbackData.split(':', 2); 
+    const queryPrefix = parts[0];
+    const dataPart = parts.length > 1 ? parts[1] : undefined;
+
+    console.log(`Callback received - Prefix: ${queryPrefix}, DataPart: ${dataPart}`); 
+
+    // --- Handle GPT Model Selection First (Specific Prefixes + Data) ---
+    if (queryPrefix === 'gpt' && (dataPart === '4o' || dataPart === '3.5t' || dataPart === 'cancel')) {
+        const modelSelection = dataPart;
+        switch (modelSelection) {
+            case '4o':
+                // Answer immediately
+                await ctx.answerCallbackQuery({ text: "Model set to GPT-4o" });
+                ctx.session.currentGptModel = 'gpt-4o';
+                await ctx.editMessageText("Default OpenAI model set to GPT-4o.", { reply_markup: new InlineKeyboard() });
+                return;
+            case '3.5t':
+                await ctx.answerCallbackQuery({ text: "Model set to GPT-3.5 Turbo" });
+                ctx.session.currentGptModel = 'gpt-3.5-turbo';
+                await ctx.editMessageText("Default OpenAI model set to GPT-3.5 Turbo.", { reply_markup: new InlineKeyboard() });
+                return;
+            case 'cancel':
+                await ctx.answerCallbackQuery({ text: "Cancelled" });
+                await ctx.editMessageText("GPT model selection cancelled.", { reply_markup: new InlineKeyboard() });
+                return;
+            // No default needed as we checked dataPart explicitly
+        }
     }
 
-    const messageData = getMessageData(data.messageStoreId);
-    if (!messageData) {
-        await ctx.answerCallbackQuery({ text: "Error: Original message context not found. It might be too old." });
-        await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() }); // Remove buttons
-        return;
-    }
-
-    switch (data.query) {
-        case 'gpt4o':
-            ctx.session.currentGptModel = 'gpt-4o';
-            await ctx.answerCallbackQuery({ text: "Model set to GPT-4o" });
-            await ctx.editMessageText("Default OpenAI model set to GPT-4o.", { reply_markup: new InlineKeyboard() });
-            break;
-        case 'gpt3.5turbo':
-            ctx.session.currentGptModel = 'gpt-3.5-turbo';
-            await ctx.answerCallbackQuery({ text: "Model set to GPT-3.5 Turbo" });
-            await ctx.editMessageText("Default OpenAI model set to GPT-3.5 Turbo.", { reply_markup: new InlineKeyboard() });
-            break;
-        case 'cancelGptChange':
-            await ctx.answerCallbackQuery({ text: "Cancelled" });
-            await ctx.editMessageText("GPT model selection cancelled.", { reply_markup: new InlineKeyboard() });
-            break;
-
-        case 'sendGpt':
-            await ctx.answerCallbackQuery({ text: "Processing with GPT..." });
-            const contentToSend = messageData.scrapedMessageContent || messageData.originalMessageText;
-            const gptModel = ctx.session.currentGptModel || config.openai.defaultModel;
-            const gptResult = await generateGptSummary(contentToSend, config.openai.readyPrompt, gptModel);
-            
-            if (gptResult) {
-                // Send the GPT result as a new message with action buttons
-                await sendActionPrompt(ctx, gptResult); 
-                // Optionally edit the original message to show it was processed
-                // await ctx.editMessageText("Original message processed by GPT.", { reply_markup: new InlineKeyboard() });
-            } else {
-                await ctx.api.sendMessage(config.telegram.editorsGroupId, "Sorry, failed to get a response from OpenAI.");
-            }
-            // Clean up the original prompt message buttons? Or leave them?
-            // deleteMessageData(data.messageStoreId);
-            // await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() }); // Remove buttons from original
-            break;
-
-        case 'sendChannel':
-            await ctx.answerCallbackQuery({ text: "Sending to news channel..." });
-            const textToSend = messageData.gptGeneratedContent || messageData.originalMessageText;
-            try {
-                await ctx.api.sendMessage(config.telegram.newsChannelId, textToSend, { parse_mode: "Markdown" });
-                await ctx.editMessageText("Sent to news channel!", { reply_markup: new InlineKeyboard() });
-                deleteMessageData(data.messageStoreId); // Clean up after successful send
-            } catch (error) {
-                console.error(`Failed to send message to news channel ${config.telegram.newsChannelId}:`, error);
-                await ctx.api.sendMessage(config.telegram.editorsGroupId, `Failed to send message to the news channel. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                await ctx.answerCallbackQuery({ text: "Error sending message!" });
-            }
-            break;
-
-        case 'newPrompt':
-            await ctx.answerCallbackQuery();
-            // Start the conversation for getting a new prompt
-            ctx.session.messageStoreIdForNewPrompt = data.messageStoreId; // Store context for conversation
-            await ctx.conversation.enter("newPromptConversation"); 
-            // The conversation handler will edit the message text and keyboard
-            break;
+    // --- Handle Start Scraping and Support (No messageStoreId needed for these initial ones) ---
+    if (queryPrefix === 'start_scraping') {
+        await ctx.answerCallbackQuery({ text: "Starting scraping process..." });
+        await ctx.reply("Manual scraping process initiated. This might take a moment. Found articles will be sent to the editors group.");
         
-        case 'cancelNewPrompt': // This might be handled within the conversation now
-             await ctx.answerCallbackQuery({ text: "Cancelled" });
-             if (messageData.keyboard) {
-                await ctx.editMessageText("New prompt cancelled. Choose an option:", {
-                    reply_markup: { inline_keyboard: messageData.keyboard }
-                });
-             } else {
-                 await ctx.editMessageText("New prompt cancelled."); // Fallback if keyboard isn't stored right
-             }
-            break;
+        // Run the scraper asynchronously (don't wait for it to finish here)
+        runScraper().then(() => {
+            console.log("Manual scrape triggered via button finished.");
+            // Optionally notify the user who clicked the button upon completion
+            // Be careful about potential rate limits if many users click this.
+            // ctx.reply("Manual scraping process completed.");
+        }).catch(error => {
+            console.error("Error during manual scrape triggered via button:", error);
+            ctx.reply("An error occurred during the manual scraping process.");
+        });
 
-        default:
-            await ctx.answerCallbackQuery({ text: "Unknown action" });
-            console.warn("Unhandled callback query:", data.query);
+        return;
+    }
+
+    if (queryPrefix === 'support') {
+        await ctx.answerCallbackQuery();
+        await ctx.reply("For support, please contact the bot admin or check the project documentation.");
+        // TODO: Provide actual support information or links
+        return;
+    }
+
+    // --- Handle Actions Requiring messageStoreId (UUID expected in dataPart) ---
+    const messageStoreId = dataPart; // Assume dataPart is the messageStoreId for other prefixes
+    if (!messageStoreId || messageStoreId.length !== 36) { // Basic UUID length check
+        await ctx.answerCallbackQuery({ text: "Error: Invalid or missing message context ID." });
+        console.error("Callback query missing or invalid UUID messageStoreId:", callbackData);
+        // Optionally try to remove buttons if possible, though context might be lost
+        try { await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() }); } catch {} 
+        return;
+    }
+
+    const messageData = getMessageData(messageStoreId);
+    if (!messageData) {
+        await ctx.answerCallbackQuery({ text: "Error: Original message context not found (too old?)." });
+        try { await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() }); } catch {} 
+        return;
+    }
+
+    // --- Process Actions ---
+    try {
+        switch (queryPrefix) {
+            case 'gpt': // Send existing message content to GPT (dataPart is UUID here)
+                await ctx.answerCallbackQuery({ text: "Processing with GPT..." }); // Answer immediately
+                const contentToSend = messageData.scrapedMessageContent || messageData.originalMessageText;
+                const gptModel = ctx.session.currentGptModel || config.openai.defaultModel;
+                const gptResult = await generateGptSummary(contentToSend, config.openai.readyPrompt, gptModel);
+                
+                if (gptResult) {
+                    messageData.gptGeneratedContent = gptResult;
+                    storeMessageData(messageStoreId, messageData); // Update stored data
+                    await ctx.api.sendMessage(config.telegram.editorsGroupId, "GPT Summary Generated:");
+                    await sendActionPrompt(ctx, gptResult); // Send new prompt for the summary
+                    await ctx.editMessageText("Original message processed by GPT. Summary posted below.", { reply_markup: new InlineKeyboard() });
+                } else {
+                    await ctx.api.sendMessage(config.telegram.editorsGroupId, "Sorry, failed to get a response from OpenAI.");
+                }
+                break;
+
+            case 'chn': // Send to Channel
+                await ctx.answerCallbackQuery({ text: "Sending to news channel..." }); // Answer immediately
+                const textToSend = messageData.gptGeneratedContent || messageData.originalMessageText;
+                try {
+                    await ctx.api.sendMessage(config.telegram.newsChannelId, textToSend, { parse_mode: "Markdown" });
+                    await ctx.editMessageText("Sent to news channel!", { reply_markup: new InlineKeyboard() });
+                    deleteMessageData(messageStoreId); // Clean up
+                } catch (sendError) {
+                    console.error(`Failed to send message to news channel ${config.telegram.newsChannelId}:`, sendError);
+                    await ctx.api.sendMessage(config.telegram.editorsGroupId, `Failed to send message to the news channel. Error: ${sendError instanceof Error ? sendError.message : 'Unknown error'}`);
+                    // Optionally edit the original message to show failure?
+                }
+                break;
+
+            case 'prm': // New Prompt
+                await ctx.answerCallbackQuery(); // Answer immediately (no text needed)
+                ctx.session.messageStoreIdForNewPrompt = messageStoreId; 
+                await ctx.editMessageText("Please reply with your custom prompt for GPT.", { 
+                     reply_markup: createCancelKeyboard(messageStoreId)
+                 });
+                await ctx.conversation.enter("newPromptConversation"); 
+                break;
+            
+            case 'cnp': // Cancel New Prompt 
+                 await ctx.answerCallbackQuery({ text: "Cancelled" }); // Answer immediately
+                 // Restore original state
+                 if (messageData.keyboard) {
+                    await ctx.editMessageText(messageData.originalMessageText || "Choose an option:", {
+                        reply_markup: { inline_keyboard: messageData.keyboard }
+                    });
+                 } else {
+                     await ctx.editMessageText("New prompt cancelled.", { reply_markup: new InlineKeyboard() });
+                 }
+                 // Attempt to exit conversation safely
+                 try { await ctx.conversation.exit(); } catch {} 
+                break;
+
+            default:
+                await ctx.answerCallbackQuery({ text: "Unknown action" }); // Answer immediately
+                console.warn("Unhandled callback query prefix:", queryPrefix);
+        }
+    } catch (error) {
+        // Catch errors during action processing AFTER answering the callback query
+        console.error("Error processing callback action:", queryPrefix, messageStoreId, error);
+        // Notify user in chat that something went wrong during processing
+        try {
+             await ctx.reply(`An error occurred while processing action '${queryPrefix}'. Please try again later.`);
+        } catch (replyError) {
+             console.error("Failed to send error message to chat:", replyError);
+        }
     }
 }
 
